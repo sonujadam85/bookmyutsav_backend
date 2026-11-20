@@ -602,6 +602,12 @@ test('companies: sign-up, approval by Super Admin, and each company sees only it
   r = await api('POST', '/api/public/signup', signup({ email: 'x@y.test', profile_name: 'XY Decor', aadhaar_no: aadhaar('34567890123') }), null);
   assert.equal(r.status, 201);
   assert.equal((await api('GET', `/api/super/companies/${x.id}`)).data.status, 'PENDING');
+
+  // Super Admin changes their mind: a rejected sign-up can be approved directly
+  await api('POST', `/api/super/companies/${x.id}/reject`, { reason: 'Changed later' });
+  assert.ok((await api('POST', `/api/super/companies/${x.id}/approve`)).status < 300);
+  r = await api('POST', '/api/auth/login', { email: 'x@y.test', password: 'Sharma@123' }, null);
+  assert.ok(r.status < 300 && r.data.token, 'approved after rejection can log in with the sign-up password');
 });
 
 test('service video links: YouTube and Instagram only, shown on the booking page', async () => {
