@@ -1,0 +1,19 @@
+{
+  "name": "event-pro-erp-server",
+  "version": "1.0.0",
+  "description": "Event Pro ERP - REST API (Node.js + built-in SQLite)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/index.js",
+    "reset-db": "node --disable-warning=ExperimentalWarning src/reset-db.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/api.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.2.0"
+  }
+}

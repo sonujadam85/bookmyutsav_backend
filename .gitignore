@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Secrets: passwords, SMTP login, keys
+.env
+.env.*
+!.env.example
+
+# Database, uploaded photos/videos, Aadhaar/PAN files and keys (.kyc-key, .jwt-secret)
+data/
+
+# Logs
+*.log
+npm-debug.log*
