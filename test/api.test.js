@@ -539,7 +539,7 @@ test('companies: sign-up, approval by Super Admin, and each company sees only it
   assert.equal((await api('GET', '/api/events?when=all', null, tb)).data.length, 0);
   assert.equal((await api('GET', '/api/clients', null, tb)).data.length, 0);
   assert.equal((await api('GET', '/api/bookings?when=all', null, tb)).data.length, 0);
-  assert.equal((await api('GET', '/api/services', null, tb)).data.length, 42);
+  assert.equal((await api('GET', '/api/services', null, tb)).data.length, 0); // starts with no services; adds its own
   assert.equal((await api('GET', '/api/settings', null, tb)).data.business_name, 'Sharma Events Pvt Ltd');
   // No Super Admin or user management for company owners
   assert.equal((await api('GET', '/api/super/companies', null, tb)).status, 403);
@@ -585,7 +585,11 @@ test('companies: sign-up, approval by Super Admin, and each company sees only it
   r = await api('POST', '/api/auth/login', { email: 'ravi@sharma.test', password: 'Sharma@123' }, null);
   assert.equal(r.status, 403); assert.match(r.data.message, /suspended.*Payment due/);
   assert.equal((await api('GET', '/api/public/c/sharma-events/services', null, null)).status, 404);
+  const sub = (m) => Buffer.from(m.match(/Subject: =\?UTF-8\?B\?([^?]+)/)?.[1] || '', 'base64').toString() || (m.match(/Subject: (.*)/)?.[1] ?? '');
+  const waitMail = async (re) => { for (let i = 0; i < 40 && !mails.some((m) => /To: ravi@sharma.test/.test(m) && re.test(sub(m))); i++) await new Promise((x) => setTimeout(x, 50)); return mails.some((m) => /To: ravi@sharma.test/.test(m) && re.test(sub(m))); };
+  assert.ok(await waitMail(/ID has been stopped/), 'stop email sent to the company');
   await api('POST', `/api/super/companies/${c.id}/reactivate`);
+  assert.ok(await waitMail(/active again/), 'start email sent to the company');
   assert.equal((await api('GET', '/api/events', null, tb)).status, 200);
   assert.equal((await api('POST', `/api/super/companies/${me.company.id}/suspend`)).status, 400); // main company is protected
 

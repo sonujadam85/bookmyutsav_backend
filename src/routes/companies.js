@@ -193,6 +193,10 @@ export function register(r) {
     if (c.status !== 'APPROVED') throw new HttpError(400, 'Only an approved company can be suspended');
     const { reason } = validate(body, { reason: { type: 'string', max: 500 } });
     pUpdate(c.id, { status: 'SUSPENDED', status_note: reason || null });
+    notify(c.email, 'Your BookMyUtsav ID has been stopped', [
+      `Hello ${esc(c.owner_name)},`, `The login and booking page of <b>${esc(c.company_name)}</b> have been stopped.${reason ? ` Reason: ${esc(reason)}` : ''}`,
+      'Your data is safe. Please contact us to start your ID again.',
+    ]);
     return summary(getCompany(c.id));
   }, SUPER);
 
@@ -200,6 +204,9 @@ export function register(r) {
     const c = status(params.id);
     if (c.status !== 'SUSPENDED') throw new HttpError(400, 'Only a suspended company can be reactivated');
     pUpdate(c.id, { status: 'APPROVED', status_note: null });
+    notify(c.email, 'Your BookMyUtsav ID is active again', [
+      `Hello ${esc(c.owner_name)},`, `<b>${esc(c.company_name)}</b> is active again. You can log in and your booking page is open.`,
+    ], { text: 'Log in', href: `${appUrl()}/login` });
     return summary(getCompany(c.id));
   }, SUPER);
 }
