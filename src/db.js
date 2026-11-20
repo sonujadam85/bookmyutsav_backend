@@ -161,9 +161,32 @@ function migrateServiceHeadings() {
 
 /** Bring a company database up to date. Runs inside that company's context. */
 export function prepareCompanyDb({ isMain }) {
-  if (isMain) seedMain();
   addColumn('services', 'category', 'TEXT');
   addColumn('event_services', 'category', 'TEXT');
-  seedServices();
-  migrateServiceHeadings();
+  // Only the main company gets the default price list. Approved companies start with no services
+  // and add their own headings and services.
+  if (isMain) {
+    seedMain();
+    seedServices();
+    migrateServiceHeadings();
+  } else {
+    removeCopiedDefaults();
+  }
+}
+
+// One-time clean-up for companies approved while new companies still got the main price list:
+// remove those default services unless the company has used them (photos, videos or a booking).
+function removeCopiedDefaults() {
+  if (scalar("SELECT value FROM settings WHERE key = 'copied_defaults_removed'")) return;
+  const names = new Set(DEFAULT_SERVICES.map((d) => d[0]));
+  tx(() => {
+    for (const s of all('SELECT id, name FROM services')) {
+      if (!names.has(s.name)) continue;
+      const used = scalar('SELECT COUNT(*) FROM service_photos WHERE service_id = ?', [s.id])
+        + scalar('SELECT COUNT(*) FROM service_videos WHERE service_id = ?', [s.id])
+        + scalar('SELECT COUNT(*) FROM event_services WHERE service_id = ?', [s.id]);
+      if (!used) run('DELETE FROM services WHERE id = ?', [s.id]);
+    }
+    run("INSERT OR REPLACE INTO settings (key, value) VALUES ('copied_defaults_removed', '1')");
+  });
 }
