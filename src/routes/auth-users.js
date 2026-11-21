@@ -1,11 +1,11 @@
 import { all, get, insert, update, run, scalar, audit } from '../db.js';
 import { hashPassword, signToken, verifyPassword } from '../auth.js';
 import { HttpError, validate, idParam, notFound } from '../http.js';
-import { getAccount, getCompany, pInsert, pRun, withCompany } from '../platform.js';
+import { getAccount, getCompany, logoUrl, pInsert, pRun, withCompany } from '../platform.js';
 
 // Login users are managed only in the main company; other companies have one login (the owner).
 const ADMIN = { roles: ['ADMIN'], mainOnly: true };
-const companyInfo = (c) => c && { id: c.id, name: c.company_name, slug: c.slug, is_main: !!c.is_main };
+const companyInfo = (c) => c && { id: c.id, name: c.company_name, slug: c.slug, is_main: !!c.is_main, logo_url: logoUrl(c) };
 const publicUser = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, created_at: u.created_at };
 
 const userSchema = {

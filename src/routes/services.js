@@ -9,6 +9,7 @@ import { getSettings } from './masters.js';
 import { EVENT_SELECT, withMoney } from '../finance.js';
 import { mailConfig, sendMail } from '../mailer.js';
 import { current } from '../context.js';
+import { getCompany as platformCompany, logoUrl } from '../platform.js';
 
 const ADMIN = { roles: ['ADMIN'] };
 const IMAGE_TYPES = /^image\/(png|jpe?g|gif|webp)$/;
@@ -463,7 +464,7 @@ export function register(r) {
 
   r.get('/api/public/info', () => {
     const st = getSettings();
-    return { business_name: st.business_name, business_phone: st.business_phone, business_email: st.business_email, business_address: st.business_address, slug: current().company.slug };
+    return { business_name: st.business_name, business_phone: st.business_phone, business_email: st.business_email, business_address: st.business_address, slug: current().company.slug, logo_url: logoUrl(platformCompany(current().company.id)), business_type: platformCompany(current().company.id)?.business_type || '' };
   }, { public: true });
 
   r.get('/api/public/services', () =>

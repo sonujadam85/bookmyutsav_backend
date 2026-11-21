@@ -4,7 +4,9 @@ import { hashPassword } from '../auth.js';
 import {
   pAll, pGet, pInsert, pRun, pUpdate, getAccount, getCompany, mainCompany, companyBySlug, slugify, RESERVED_SLUGS,
   encryptText, decryptText, saveKycFile, readKycFile, createCompanyDatabase,
+  setCompanyLogo, clearCompanyLogo, logoFilePath, logoUrl,
 } from '../platform.js';
+import fs from 'node:fs';
 import { mailConfig, sendMail } from '../mailer.js';
 import { config } from '../config.js';
 
@@ -34,6 +36,23 @@ function photo(b64, mime, label) {
   return { buf, mime: m === 'image/jpg' ? 'image/jpeg' : m };
 }
 
+/** Company logo sent as base64: PNG, JPG or WEBP, at most 2 MB. */
+function logoImage(b64, mime) {
+  const m = String(mime || '').toLowerCase().replace('image/jpg', 'image/jpeg');
+  if (!IMG.test(m)) throw new HttpError(400, 'Logo must be a PNG, JPG or WEBP image', { logo: 'PNG, JPG or WEBP' });
+  const buf = Buffer.from(String(b64).replace(/^data:[^,]+,/, ''), 'base64');
+  if (!buf.length || buf.length > 2 * 1024 * 1024) throw new HttpError(400, 'Logo must be smaller than 2 MB', { logo: 'Too large' });
+  return { buf, mime: m };
+}
+
+function sendLogo(ctx, c) {
+  const f = logoFilePath(c);
+  if (!f) throw notFound('Logo');
+  ctx.res.writeHead(200, { 'Content-Type': c.logo_mime || 'image/png', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=31536000, immutable' });
+  fs.createReadStream(f).pipe(ctx.res);
+  ctx.handled = true;
+}
+
 // Simple limit so the public sign-up cannot be flooded.
 const hits = new Map();
 function limit(req) {
@@ -51,7 +70,7 @@ function summary(c) {
     id: c.id, slug: c.slug, company_name: c.company_name, profile_name: c.profile_name, business_type: c.business_type,
     owner_name: c.owner_name, email: c.email, phone: c.phone, address: c.address, status: c.status, status_note: c.status_note,
     is_main: !!c.is_main, aadhaar_last4: c.aadhaar_last4, pan_masked: c.pan_masked,
-    has_aadhaar_photo: !!c.aadhaar_photo, has_pan_photo: !!c.pan_photo, created_at: c.created_at, approved_at: c.approved_at,
+    has_aadhaar_photo: !!c.aadhaar_photo, has_pan_photo: !!c.pan_photo, has_logo: !!c.logo_file, created_at: c.created_at, approved_at: c.approved_at,
   };
 }
 
@@ -70,6 +89,22 @@ const superEmail = () => process.env.SUPER_ADMIN_EMAIL || process.env.SMTP_USER
   || pGet('SELECT email FROM accounts WHERE is_super = 1 LIMIT 1')?.email;
 
 export function register(r) {
+  // ---------- Company logo ----------
+  // Booking page and panel: /api/public/c/<slug>/logo
+  r.get('/api/public/logo', (ctx) => sendLogo(ctx, getCompany(ctx.company.id)), { public: true });
+  r.get('/api/super/companies/:id/logo', (ctx) => sendLogo(ctx, getCompany(idParam(ctx.params.id))), { super: true, allowQueryToken: true });
+
+  // The company changes its own logo (Settings).
+  r.put('/api/settings/logo', ({ company, body }) => {
+    const logo = logoImage(body.logo, body.logo_mime);
+    setCompanyLogo(getCompany(company.id), logo.buf, logo.mime);
+    return { logo_url: logoUrl(getCompany(company.id)) };
+  }, { roles: ['ADMIN'] });
+  r.delete('/api/settings/logo', ({ company }) => {
+    clearCompanyLogo(getCompany(company.id));
+    return { logo_url: null };
+  }, { roles: ['ADMIN'] });
+
   // ---------- Public sign-up ----------
   r.get('/api/public/slug-available', ({ query }) => {
     const slug = slugify(query.name || query.slug);
@@ -107,6 +142,7 @@ export function register(r) {
     if (Object.keys(errors).length) throw new HttpError(400, Object.values(errors)[0], errors);
     const aPhoto = photo(body.aadhaar_photo, body.aadhaar_photo_mime, 'Aadhaar card');
     const pPhoto = photo(body.pan_photo, body.pan_photo_mime, 'PAN card');
+    const logo = body.logo ? logoImage(body.logo, body.logo_mime) : null;
 
     const data = {
       slug, company_name: d.company_name, profile_name: d.profile_name, business_type: d.business_type,
@@ -121,6 +157,7 @@ export function register(r) {
       aadhaar_photo: saveKycFile(id, aPhoto.buf), aadhaar_photo_mime: aPhoto.mime,
       pan_photo: saveKycFile(id, pPhoto.buf), pan_photo_mime: pPhoto.mime,
     });
+    if (logo) setCompanyLogo(getCompany(id), logo.buf, logo.mime);
     if (!acc) pInsert('accounts', { email: d.email, company_id: id, is_super: 0 });
 
     notify(superEmail(), `New sign-up waiting for approval – ${d.company_name}`, [

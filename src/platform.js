@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   is_super   INTEGER NOT NULL DEFAULT 0
 );`);
 
+// Columns added after the first release.
+for (const [col, type] of [['logo_file', 'TEXT'], ['logo_mime', 'TEXT']]) {
+  if (!P.prepare('PRAGMA table_info(companies)').all().some((c) => c.name === col)) P.exec(`ALTER TABLE companies ADD COLUMN ${col} ${type}`);
+}
+
 const row = (r) => (r ? { ...r } : r);
 export const pAll = (sql, params = []) => P.prepare(sql).all(...params).map(row);
 export const pGet = (sql, params = []) => row(P.prepare(sql).get(...params));
@@ -95,6 +100,34 @@ export function readKycFile(companyId, name) {
   const f = path.join(config.kycDir, String(companyId), path.basename(name));
   return fs.existsSync(f) ? decrypt(fs.readFileSync(f)) : null;
 }
+
+// ---------- Company logos (shown in the panel and on the booking page; not secret) ----------
+const logoDir = () => path.join(config.dataDir, 'logos');
+const LOGO_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+/** Save a company logo and remove the old one. */
+export function setCompanyLogo(company, buf, mime) {
+  fs.mkdirSync(logoDir(), { recursive: true });
+  const name = `${company.id}-${crypto.randomUUID().slice(0, 8)}.${LOGO_EXT[mime] || 'png'}`;
+  fs.writeFileSync(path.join(logoDir(), name), buf);
+  removeLogoFile(company.logo_file);
+  pUpdate(company.id, { logo_file: name, logo_mime: mime });
+  return name;
+}
+export function clearCompanyLogo(company) {
+  removeLogoFile(company.logo_file);
+  pUpdate(company.id, { logo_file: null, logo_mime: null });
+}
+function removeLogoFile(name) {
+  if (!name) return;
+  try { fs.unlinkSync(path.join(logoDir(), path.basename(name))); } catch { /* already gone */ }
+}
+export function logoFilePath(company) {
+  if (!company?.logo_file) return null;
+  const f = path.join(logoDir(), path.basename(company.logo_file));
+  return fs.existsSync(f) ? f : null;
+}
+/** Public address of the logo; the file name changes on every upload, so browsers never show an old one. */
+export const logoUrl = (c) => (c?.logo_file ? `/api/public/c/${encodeURIComponent(c.slug)}/logo?v=${c.logo_file.split('-')[1]?.split('.')[0] || '1'}` : null);
 
 // ---------- Companies ----------
 export const getCompany = (id) => pGet('SELECT * FROM companies WHERE id = ?', [id]);

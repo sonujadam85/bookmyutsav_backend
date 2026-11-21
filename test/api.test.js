@@ -503,7 +503,9 @@ test('companies: sign-up, approval by Super Admin, and each company sees only it
   assert.ok(r.data.errors.email);
   r = await api('POST', '/api/public/signup', signup({ pan_photo: null }), null);
   assert.equal(r.status, 400);
-  r = await api('POST', '/api/public/signup', signup(), null);
+  r = await api('POST', '/api/public/signup', signup({ logo: PNG2, logo_mime: 'application/pdf' }), null);
+  assert.ok(r.data.errors.logo, 'logo must be an image');
+  r = await api('POST', '/api/public/signup', signup({ logo: PNG2, logo_mime: 'image/png' }), null);
   assert.equal(r.status, 201);
   assert.equal(r.data.slug, 'sharma-events');
   assert.equal((await api('GET', '/api/public/slug-available?name=Sharma Events', null, null)).data.available, false);
@@ -536,6 +538,21 @@ test('companies: sign-up, approval by Super Admin, and each company sees only it
   assert.equal(r.status, 201);
   const tb = r.data.token;
   assert.equal(r.data.user.company.slug, 'sharma-events'); assert.equal(r.data.user.is_super, false); assert.equal(r.data.user.role, 'ADMIN');
+
+  // Its own logo: in the panel (/me), on its booking page, and changeable in Settings
+  const logo1 = r.data.user.company.logo_url;
+  assert.match(logo1, /^\/api\/public\/c\/sharma-events\/logo\?v=/);
+  let lg = await fetch(BASE + logo1);
+  assert.equal(lg.status, 200); assert.equal(lg.headers.get('content-type'), 'image/png');
+  assert.equal((await api('GET', '/api/public/c/sharma-events/info', null, null)).data.logo_url, logo1);
+  assert.equal((await api('GET', '/api/auth/me')).data.company.logo_url, null, 'main company has no uploaded logo');
+  assert.equal((await api('PUT', '/api/settings/logo', { logo: PNG2, logo_mime: 'image/jpeg' }, tb)).status, 200);
+  const logo2 = (await api('GET', '/api/auth/me', null, tb)).data.company.logo_url;
+  assert.notEqual(logo2, logo1, 'new upload gets a new address');
+  assert.equal((await fetch(BASE + logo2)).headers.get('content-type'), 'image/jpeg');
+  assert.equal((await api('DELETE', '/api/settings/logo', null, tb)).data.logo_url, null);
+  assert.equal((await fetch(BASE + '/api/public/c/sharma-events/logo')).status, 404);
+  await api('PUT', '/api/settings/logo', { logo: PNG2, logo_mime: 'image/png' }, tb);
   assert.equal((await api('GET', '/api/events?when=all', null, tb)).data.length, 0);
   assert.equal((await api('GET', '/api/clients', null, tb)).data.length, 0);
   assert.equal((await api('GET', '/api/bookings?when=all', null, tb)).data.length, 0);
